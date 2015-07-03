@@ -41,8 +41,8 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/astaxie/beego"
-	"github.com/astaxie/beego/swagger"
+	"github.com/simpleton/beego"
+	"github.com/simpleton/beego/swagger"
 )
 
 const (
