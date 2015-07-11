@@ -1003,7 +1003,7 @@ import (
 	"reflect"
 	"strings"
 	{{timePkg}}
-	"github.com/astaxie/beego/orm"
+	"github.com/simpleton/beego/orm"
 )
 
 {{modelStruct}}
@@ -1148,7 +1148,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/astaxie/beego"
+	"github.com/simpleton/beego"
 )
 
 // oprations for {{ctrlName}}
@@ -1301,7 +1301,7 @@ func (c *{{ctrlName}}Controller) Delete() {
 	ROUTER_TPL = `// @APIVersion 1.0.0
 // @Title beego Test API
 // @Description beego has a very cool tools to autogenerate documents for your API
-// @Contact astaxie@gmail.com
+// @Contact simpleton@gmail.com
 // @TermsOfServiceUrl http://beego.me/
 // @License Apache 2.0
 // @LicenseUrl http://www.apache.org/licenses/LICENSE-2.0.html
@@ -1310,7 +1310,7 @@ package routers
 import (
 	"{{pkgPath}}/controllers"
 
-	"github.com/astaxie/beego"
+	"github.com/simpleton/beego"
 )
 
 func init() {

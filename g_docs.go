@@ -31,8 +31,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/astaxie/beego/swagger"
-	"github.com/astaxie/beego/utils"
+	"github.com/simpleton/beego/swagger"
+	"github.com/simpleton/beego/utils"
 )
 
 var globalDocsTemplate = `package docs
@@ -273,7 +273,7 @@ func analisyscontrollerPkg(localName, pkgpath string) {
 		pps := strings.Split(pkgpath, "/")
 		importlist[pps[len(pps)-1]] = pkgpath
 	}
-	if pkgpath == "github.com/astaxie/beego" {
+	if pkgpath == "github.com/simpleton/beego" {
 		return
 	}
 	gopath := os.Getenv("GOPATH")

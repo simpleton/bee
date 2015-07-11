@@ -1,7 +1,7 @@
 package router
 
 import (
-	"github.com/astaxie/beego"
+	"github.com/simpleton/beego"
 )
 
 type Router struct {
