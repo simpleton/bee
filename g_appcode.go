@@ -362,12 +362,12 @@ func getTableObjects(tableNames []string, db *sql.DB, dbTransformer DbTransforme
 // and fill in Table struct
 func (*MysqlDB) GetConstraints(db *sql.DB, table *Table, blackList map[string]bool) {
 	rows, err := db.Query(
-		`SELECT 
+		`SELECT
 			c.constraint_type, u.column_name, u.referenced_table_schema, u.referenced_table_name, referenced_column_name, u.ordinal_position
 		FROM
-			information_schema.table_constraints c 
+			information_schema.table_constraints c
 		INNER JOIN
-			information_schema.key_column_usage u ON c.constraint_name = u.constraint_name 
+			information_schema.key_column_usage u ON c.constraint_name = u.constraint_name
 		WHERE
 			c.table_schema = database() AND c.table_name = ? AND u.table_schema = database() AND u.table_name = ?`,
 		table.Name, table.Name) //  u.position_in_unique_constraint,
@@ -412,9 +412,9 @@ func (mysqlDB *MysqlDB) GetColumns(db *sql.DB, table *Table, blackList map[strin
 	// retrieve columns
 	colDefRows, _ := db.Query(
 		`SELECT
-			column_name, data_type, column_type, is_nullable, column_default, extra 
+			column_name, data_type, column_type, is_nullable, column_default, extra
 		FROM
-			information_schema.columns 
+			information_schema.columns
 		WHERE
 			table_schema = database() AND table_name = ?`,
 		table.Name)
@@ -516,7 +516,9 @@ func (*MysqlDB) GetGoDataType(sqlType string) (goType string) {
 func (*PostgresDB) GetTableNames(db *sql.DB) (tables []string) {
 	rows, err := db.Query(`
 		SELECT table_name FROM information_schema.tables
-		WHERE table_catalog = current_database() and table_schema = 'public'`)
+		WHERE table_catalog = current_database() AND
+		table_type = 'BASE TABLE' AND
+		table_schema NOT IN ('pg_catalog', 'information_schema')`)
 	if err != nil {
 		ColorLog("[ERRO] Could not show tables: %s\n", err)
 		ColorLog("[HINT] Check your connection string\n")
@@ -537,7 +539,7 @@ func (*PostgresDB) GetTableNames(db *sql.DB) (tables []string) {
 // GetConstraints for PostgreSQL
 func (*PostgresDB) GetConstraints(db *sql.DB, table *Table, blackList map[string]bool) {
 	rows, err := db.Query(
-		`SELECT 
+		`SELECT
 			c.constraint_type,
 			u.column_name,
 			cu.table_catalog AS referenced_table_catalog,
@@ -545,14 +547,16 @@ func (*PostgresDB) GetConstraints(db *sql.DB, table *Table, blackList map[string
 			cu.column_name AS referenced_column_name,
 			u.ordinal_position
 		FROM
-			information_schema.table_constraints c 
+			information_schema.table_constraints c
 		INNER JOIN
 			information_schema.key_column_usage u ON c.constraint_name = u.constraint_name
 		INNER JOIN
 			information_schema.constraint_column_usage cu ON cu.constraint_name =  c.constraint_name
 		WHERE
-			c.table_catalog = current_database() AND c.table_schema = 'public' AND c.table_name = $1 
-			AND u.table_catalog = current_database() AND u.table_schema = 'public' AND u.table_name = $2`,
+			c.table_catalog = current_database() AND c.table_schema NOT IN ('pg_catalog', 'information_schema')
+			 AND c.table_name = $1
+			AND u.table_catalog = current_database() AND u.table_schema NOT IN ('pg_catalog', 'information_schema')
+			 AND u.table_name = $2`,
 		table.Name, table.Name) //  u.position_in_unique_constraint,
 	if err != nil {
 		ColorLog("[ERRO] Could not query INFORMATION_SCHEMA for PK/UK/FK information: %s\n", err)
@@ -606,9 +610,10 @@ func (postgresDB *PostgresDB) GetColumns(db *sql.DB, table *Table, blackList map
 			column_default,
 			'' AS extra
 		FROM
-			information_schema.columns 
+			information_schema.columns
 		WHERE
-			table_catalog = current_database() AND table_schema = 'public' AND table_name = $1`,
+			table_catalog = current_database() AND table_schema NOT IN ('pg_catalog', 'information_schema')
+			 AND table_name = $1`,
 		table.Name)
 	defer colDefRows.Close()
 	for colDefRows.Next() {
@@ -985,6 +990,12 @@ func getPackagePath(curpath string) (packpath string) {
 		ColorLog("[ERRO] Can't generate application code outside of GOPATH '%s'\n", gopath)
 		os.Exit(2)
 	}
+
+	if curpath == appsrcpath {
+		ColorLog("[ERRO] Can't generate application code outside of application PATH \n")
+		os.Exit(2)
+	}
+
 	packpath = strings.Join(strings.Split(curpath[len(appsrcpath)+1:], string(filepath.Separator)), "/")
 	return
 }
@@ -1167,18 +1178,22 @@ func (c *{{ctrlName}}Controller) URLMapping() {
 // @Title Post
 // @Description create {{ctrlName}}
 // @Param	body		body 	models.{{ctrlName}}	true		"body for {{ctrlName}} content"
-// @Success 200 {int} models.{{ctrlName}}.Id
+// @Success 201 {int} models.{{ctrlName}}
 // @Failure 403 body is empty
 // @router / [post]
 func (c *{{ctrlName}}Controller) Post() {
 	var v models.{{ctrlName}}
-	json.Unmarshal(c.Ctx.Input.RequestBody, &v)
-	if id, err := models.Add{{ctrlName}}(&v); err == nil {
-		c.Data["json"] = map[string]int64{"id": id}
+	if err := json.Unmarshal(c.Ctx.Input.RequestBody, &v); err == nil {
+		if _, err := models.Add{{ctrlName}}(&v); err == nil {
+			c.Ctx.Output.SetStatus(201)
+			c.Data["json"] = v
+		} else {
+			c.Data["json"] = err.Error()
+		}
 	} else {
 		c.Data["json"] = err.Error()
 	}
-	c.ServeJson()
+	c.ServeJSON()
 }
 
 // @Title Get
@@ -1188,7 +1203,7 @@ func (c *{{ctrlName}}Controller) Post() {
 // @Failure 403 :id is empty
 // @router /:id [get]
 func (c *{{ctrlName}}Controller) GetOne() {
-	idStr := c.Ctx.Input.Params[":id"]
+	idStr := c.Ctx.Input.Param(":id")
 	id, _ := strconv.Atoi(idStr)
 	v, err := models.Get{{ctrlName}}ById(id)
 	if err != nil {
@@ -1196,7 +1211,7 @@ func (c *{{ctrlName}}Controller) GetOne() {
 	} else {
 		c.Data["json"] = v
 	}
-	c.ServeJson()
+	c.ServeJSON()
 }
 
 // @Title Get All
@@ -1208,7 +1223,7 @@ func (c *{{ctrlName}}Controller) GetOne() {
 // @Param	limit	query	string	false	"Limit the size of result set. Must be an integer"
 // @Param	offset	query	string	false	"Start position of result set. Must be an integer"
 // @Success 200 {object} models.{{ctrlName}}
-// @Failure 403 
+// @Failure 403
 // @router / [get]
 func (c *{{ctrlName}}Controller) GetAll() {
 	var fields []string
@@ -1244,7 +1259,7 @@ func (c *{{ctrlName}}Controller) GetAll() {
 			kv := strings.Split(cond, ":")
 			if len(kv) != 2 {
 				c.Data["json"] = errors.New("Error: invalid query key/value pair")
-				c.ServeJson()
+				c.ServeJSON()
 				return
 			}
 			k, v := kv[0], kv[1]
@@ -1258,7 +1273,7 @@ func (c *{{ctrlName}}Controller) GetAll() {
 	} else {
 		c.Data["json"] = l
 	}
-	c.ServeJson()
+	c.ServeJSON()
 }
 
 // @Title Update
@@ -1269,16 +1284,19 @@ func (c *{{ctrlName}}Controller) GetAll() {
 // @Failure 403 :id is not int
 // @router /:id [put]
 func (c *{{ctrlName}}Controller) Put() {
-	idStr := c.Ctx.Input.Params[":id"]
+	idStr := c.Ctx.Input.Param(":id")
 	id, _ := strconv.Atoi(idStr)
 	v := models.{{ctrlName}}{Id: id}
-	json.Unmarshal(c.Ctx.Input.RequestBody, &v)
-	if err := models.Update{{ctrlName}}ById(&v); err == nil {
-		c.Data["json"] = "OK"
+	if err := json.Unmarshal(c.Ctx.Input.RequestBody, &v); err == nil {
+		if err := models.Update{{ctrlName}}ById(&v); err == nil {
+			c.Data["json"] = "OK"
+		} else {
+			c.Data["json"] = err.Error()
+		}
 	} else {
 		c.Data["json"] = err.Error()
 	}
-	c.ServeJson()
+	c.ServeJSON()
 }
 
 // @Title Delete
@@ -1288,14 +1306,14 @@ func (c *{{ctrlName}}Controller) Put() {
 // @Failure 403 id is empty
 // @router /:id [delete]
 func (c *{{ctrlName}}Controller) Delete() {
-	idStr := c.Ctx.Input.Params[":id"]
+	idStr := c.Ctx.Input.Param(":id")
 	id, _ := strconv.Atoi(idStr)
 	if err := models.Delete{{ctrlName}}(id); err == nil {
 		c.Data["json"] = "OK"
 	} else {
 		c.Data["json"] = err.Error()
 	}
-	c.ServeJson()
+	c.ServeJSON()
 }
 `
 	ROUTER_TPL = `// @APIVersion 1.0.0

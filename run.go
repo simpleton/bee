@@ -15,15 +15,18 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
+	"os/exec"
 	path "path/filepath"
 	"runtime"
 	"strings"
 )
 
 var cmdRun = &Command{
-	UsageLine: "run [appname] [watchall] [-main=*.go] [-downdoc=true]  [-gendoc=true]  [-e=Godeps -e=folderToExclude]",
+	UsageLine: "run [appname] [watchall] [-main=*.go] [-downdoc=true]  [-gendoc=true]  [-e=Godeps -e=folderToExclude]  [-tags=goBuildTags]",
 	Short:     "run the app and start a Web server for development",
 	Long: `
 Run command will supervise the file system of the beego project using inotify,
@@ -40,17 +43,29 @@ var gendoc docValue
 // The flags list of the paths excluded from watching
 var excludedPaths strFlags
 
+// Pass through to -tags arg of "go build"
+var buildTags string
+
 func init() {
 	cmdRun.Run = runApp
 	cmdRun.Flag.Var(&mainFiles, "main", "specify main go files")
 	cmdRun.Flag.Var(&gendoc, "gendoc", "auto generate the docs")
 	cmdRun.Flag.Var(&downdoc, "downdoc", "auto download swagger file when not exist")
 	cmdRun.Flag.Var(&excludedPaths, "e", "Excluded paths[].")
+	cmdRun.Flag.StringVar(&buildTags, "tags", "", "Build tags (https://golang.org/pkg/go/build/)")
 }
 
 var appname string
 
 func runApp(cmd *Command, args []string) int {
+	fmt.Println("bee   :" + version)
+	fmt.Println("beego :" + getbeegoVersion())
+	goversion, err := exec.Command("go", "version").Output()
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("Go    :" + string(goversion))
+
 	exit := make(chan bool)
 	crupath, _ := os.Getwd()
 
@@ -70,7 +85,7 @@ func runApp(cmd *Command, args []string) int {
 	}
 	Debugf("current path:%s\n", crupath)
 
-	err := loadConfig()
+	err = loadConfig()
 	if err != nil {
 		ColorLog("[ERRO] Fail to parse bee.json[ %s ]\n", err)
 	}
@@ -119,7 +134,6 @@ func runApp(cmd *Command, args []string) int {
 			runtime.Goexit()
 		}
 	}
-	return 0
 }
 
 func readAppDirectories(directory string, paths *[]string) {
@@ -134,7 +148,7 @@ func readAppDirectories(directory string, paths *[]string) {
 			continue
 		}
 
-		if isExcluded(fileInfo) {
+		if isExcluded(path.Join(directory, fileInfo.Name())) {
 			continue
 		}
 
@@ -157,10 +171,20 @@ func readAppDirectories(directory string, paths *[]string) {
 }
 
 // If a file is excluded
-func isExcluded(fileInfo os.FileInfo) bool {
+func isExcluded(filePath string) bool {
 	for _, p := range excludedPaths {
-		if strings.HasSuffix(fileInfo.Name(), p) {
-			ColorLog("[INFO] Excluding from watching [ %s ]\n", fileInfo.Name())
+		absP, err := path.Abs(p)
+		if err != nil {
+			ColorLog("[ERROR] Can not get absolute path of [ %s ]\n", p)
+			continue
+		}
+		absFilePath, err := path.Abs(filePath)
+		if err != nil {
+			ColorLog("[ERROR] Can not get absolute path of [ %s ]\n", filePath)
+			break
+		}
+		if strings.HasPrefix(absFilePath, absP) {
+			ColorLog("[INFO] Excluding from watching [ %s ]\n", filePath)
 			return true
 		}
 	}
